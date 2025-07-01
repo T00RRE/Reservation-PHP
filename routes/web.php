@@ -19,11 +19,10 @@ Route::get('/restaurants/{restaurant}/menu', [RestaurantController::class, 'menu
 Route::get('/login', function() { return 'Login page - do zrobienia'; })->name('login');
 Route::get('/register', function() { return 'Register page - do zrobienia'; })->name('register');
 
-// Dashboard (bez middleware)
+// Dashboard i rezerwacje bez middleware (pełny dostęp do paneli)
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/dashboard/staff', [DashboardController::class, 'staff'])->name('dashboard.staff');
 Route::get('/dashboard/customer', [DashboardController::class, 'customer'])->name('dashboard.customer');
-
-// Rezerwacje (bez middleware)
 Route::resource('reservations', ReservationController::class);
 Route::get('/api/available-tables', [ReservationController::class, 'getAvailableTables'])->name('api.available-tables');
 

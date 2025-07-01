@@ -48,6 +48,9 @@ class DashboardController extends Controller
     public function manager()
     {
         $user = Auth::user();
+        if (!$user) {
+            $user = (object)['role' => 'manager', 'id' => 1, 'name' => 'Test Manager', 'restaurant' => null];
+        }
         $restaurant = $user->restaurant;
 
         if (!$restaurant) {
@@ -86,6 +89,9 @@ class DashboardController extends Controller
     public function staff()
     {
         $user = Auth::user();
+        if (!$user) {
+            $user = (object)['role' => 'staff', 'id' => 1, 'name' => 'Test Staff', 'restaurant' => null];
+        }
         $restaurant = $user->restaurant;
 
         if (!$restaurant) {
@@ -115,7 +121,11 @@ class DashboardController extends Controller
      */
     public function customer()
     {
+
         $user = Auth::user();
+        if (!$user) {
+            $user = (object)['role' => 'customer', 'id' => 1, 'name' => 'Test Customer'];
+        }
 
         $stats = [
             'total_reservations' => Reservation::where('user_id', $user->id)->count(),
@@ -151,7 +161,9 @@ class DashboardController extends Controller
     public function index()
     {
         $user = Auth::user();
-
+        if (!$user) {
+            $user = (object)['role' => 'admin', 'id' => 1, 'name' => 'Test Admin', 'restaurant' => null];
+        }
         return match($user->role) {
             'admin' => $this->admin(),
             'manager' => $this->manager(),
