@@ -18,14 +18,15 @@ class ReservationController extends Controller
     {
         $user = Auth::user();
         if (!$user) {
-            $user = (object)['role' => 'admin', 'id' => 1, 'name' => 'Test Admin', 'restaurant_id' => 1];
+            $user = (object)['role' => 'customer', 'id' => 1, 'name' => 'Test User', 'restaurant_id' => null];
         }
+        
         $reservations = match($user->role) {
             'admin' => Reservation::with(['user', 'restaurant', 'table'])->latest()->paginate(20),
-            'staff' => Reservation::where('restaurant_id', $user->restaurant_id ?? 1)
+            'manager', 'staff' => Reservation::where('restaurant_id', $user->restaurant_id ?? 1)
                 ->with(['user', 'table'])->latest()->paginate(20),
             'customer' => Reservation::where('user_id', $user->id)->with(['restaurant', 'table'])->latest()->paginate(10),
-            default => collect(),
+            default => Reservation::with(['user', 'restaurant', 'table'])->latest()->paginate(10),
         };
 
         return view('reservations.index', compact('reservations'));
@@ -36,7 +37,6 @@ class ReservationController extends Controller
      */
     public function create(Request $request)
     {
-        dd($request->all()); 
         $restaurantId = $request->get('restaurant_id');
         $restaurant = null;
         
@@ -62,27 +62,36 @@ class ReservationController extends Controller
             'special_requests' => 'nullable|string|max:500',
         ]);
 
-        // Sprawdź czy stolik należy do restauracji
-        $table = Table::where('id', $validated['restaurant_id'])
-            ->where('restaurant_id', $validated['restaurant_id'])
-            ->firstOrFail();
+        // Sprawdź minimalny czas wyprzedzenia (2 godziny)
+        //$reservationDateTime = Carbon::parse($validated['reservation_date'] . ' ' . $validated['reservation_time']);
+        //if ($reservationDateTime->diffInHours(now()) < 2) {
+         //   return back()->withErrors([
+          //      'reservation_time' => 'Rezerwacja musi być dokonana z wyprzedzeniem co najmniej 2 godzin.'
+          //  ])->withInput();
+//}
 
-        // Sprawdź pojemność stolika
-        if ($validated['guests_count'] > $table->capacity) {
-    return back()->withErrors([
-        'guests_count' => 'Liczba gości przekracza pojemność dostępnego stolika (' . $table->capacity . ' osób).'
-    ])->withInput();
-}
+        // Znajdź restaurację
+        $restaurant = Restaurant::findOrFail($validated['restaurant_id']);
 
-        // Sprawdź dostępność stolika
-        if (!$table->isAvailableAt($validated['reservation_date'], $validated['reservation_time'])) {
+        // Znajdź dostępny stolik
+        $availableTables = $restaurant->getAvailableTables(
+            $validated['reservation_date'],
+            $validated['reservation_time'], 
+            $validated['guests_count']
+        );
+
+        if ($availableTables->isEmpty()) {
             return back()->withErrors([
-                'restaurant_id' => 'Stolik nie jest dostępny w wybranym terminie.'
+                'guests_count' => 'Brak dostępnych stolików na wybrany termin i liczbę gości. Spróbuj inną godzinę.'
             ])->withInput();
         }
 
+        // Wybierz pierwszy dostępny stolik (najmniejszy wystarczający)
+        $table = $availableTables->sortBy('capacity')->first();
+
         // Sprawdź limit rezerwacji na dzień (max 3 na użytkownika)
-        $dailyReservations = Reservation::where('user_id', Auth::id())
+        $userId = Auth::id() ?? 1; // Tymczasowo użytkownik #1
+        $dailyReservations = Reservation::where('user_id', $userId)
             ->where('reservation_date', $validated['reservation_date'])
             ->where('status', '!=', 'cancelled')
             ->count();
@@ -93,23 +102,20 @@ class ReservationController extends Controller
             ])->withInput();
         }
 
-        // Sprawdź minimalny czas wyprzedzenia (2 godziny)
-        $reservationDateTime = Carbon::parse($validated['reservation_date'] . ' ' . $validated['reservation_time']);
-        if ($reservationDateTime->diffInHours(now()) < 2) {
-            return back()->withErrors([
-                'reservation_time' => 'Rezerwacja musi być dokonana z wyprzedzeniem co najmniej 2 godzin.'
-            ])->withInput();
-        }
-
-        $reservationData = $validated;
-        $reservationData['user_id'] = 1; // Tymczasowo ustawiamy użytkownika #1
-        $reservationData['table_id'] = 1; // Tymczasowo ustawiamy stolik #1
-        $reservationData['status'] = 'pending';
-
-        $reservation = Reservation::create($reservationData);
+        // Utwórz rezerwację
+        $reservation = Reservation::create([
+            'user_id' => $userId,
+            'restaurant_id' => $validated['restaurant_id'],
+            'table_id' => $table->id,
+            'reservation_date' => $validated['reservation_date'],
+            'reservation_time' => $validated['reservation_time'],
+            'guests_count' => $validated['guests_count'],
+            'special_requests' => $validated['special_requests'],
+            'status' => 'pending'
+        ]);
 
         return redirect()->route('reservations.show', $reservation)
-            ->with('success', 'Rezerwacja została złożona pomyślnie!');
+            ->with('success', 'Rezerwacja została złożona pomyślnie! Stolik: ' . $table->table_number);
     }
 
     /**
@@ -117,10 +123,7 @@ class ReservationController extends Controller
      */
     public function show(Reservation $reservation)
     {
-        // $this->authorize('view', $reservation);
-        
         $reservation->load(['user', 'restaurant', 'table']);
-
         return view('reservations.show', compact('reservation'));
     }
 
@@ -129,8 +132,6 @@ class ReservationController extends Controller
      */
     public function edit(Reservation $reservation)
     {
-        // $this->authorize('update', $reservation);
-
         if (!$reservation->canBeCancelled()) {
             return redirect()->route('reservations.show', $reservation)
                 ->with('error', 'Nie można edytować tej rezerwacji.');
@@ -138,8 +139,8 @@ class ReservationController extends Controller
 
         $restaurant = $reservation->restaurant;
         $availableTables = $restaurant->tables()
-            ->available()
-            ->minCapacity($reservation->guests_count)
+            ->where('capacity', '>=', $reservation->guests_count)
+            ->where('status', 'available')
             ->get();
 
         return view('reservations.edit', compact('reservation', 'availableTables'));
@@ -148,31 +149,36 @@ class ReservationController extends Controller
     /**
      * Update the specified reservation in storage.
      */
-    public function update(Request $request, Reservation $reservation)
+        public function update(Request $request, Reservation $reservation)
     {
-        // $this->authorize('update', $reservation);
-
         if (!$reservation->canBeCancelled()) {
             return redirect()->route('reservations.show', $reservation)
                 ->with('error', 'Nie można edytować tej rezerwacji.');
         }
 
         $validated = $request->validate([
-            'table_id' => 'required|exists:restaurant_tables,id',
             'reservation_date' => 'required|date|after_or_equal:today',
             'reservation_time' => 'required|date_format:H:i',
             'guests_count' => 'required|integer|min:1|max:20',
             'special_requests' => 'nullable|string|max:500',
         ]);
 
-        $table = Table::where('id', $validated['table_id'])
-            ->where('restaurant_id', $reservation->restaurant_id)
-            ->firstOrFail();
+        // Znajdź nowy stolik jeśli potrzeba
+        if ($validated['guests_count'] != $reservation->guests_count) {
+            $restaurant = $reservation->restaurant; // Załaduj relację
+            $availableTables = $restaurant->getAvailableTables(
+                $validated['reservation_date'],
+                $validated['reservation_time'],
+                $validated['guests_count']
+            );
 
-        if ($validated['guests_count'] > $table->capacity) {
-            return back()->withErrors([
-                'guests_count' => 'Liczba gości przekracza pojemność stolika.'
-            ])->withInput();
+            if ($availableTables->isEmpty()) {
+                return back()->withErrors([
+                    'guests_count' => 'Brak dostępnych stolików na nową liczbę gości.'
+                ])->withInput();
+            }
+
+            $validated['table_id'] = $availableTables->first()->id;
         }
 
         $reservation->update($validated);
@@ -186,8 +192,6 @@ class ReservationController extends Controller
      */
     public function destroy(Reservation $reservation)
     {
-        // $this->authorize('delete', $reservation);
-
         if (!$reservation->canBeCancelled()) {
             return back()->with('error', 'Nie można anulować tej rezerwacji.');
         }
@@ -203,15 +207,12 @@ class ReservationController extends Controller
      */
     public function confirm(Reservation $reservation)
     {
-        // $this->authorize('confirm', $reservation);
-
         $reservation->confirm();
-
         return back()->with('success', 'Rezerwacja została potwierdzona.');
     }
 
     /**
-     * Get available tables for given parameters
+     * Get available tables for given parameters (API)
      */
     public function getAvailableTables(Request $request)
     {

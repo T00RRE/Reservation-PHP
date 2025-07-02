@@ -73,10 +73,11 @@ class Restaurant extends Model
     {
         return $this->tables()
             ->where('capacity', '>=', $guests)
+            ->where('status', 'available')
             ->whereDoesntHave('reservations', function ($query) use ($date, $time) {
                 $query->where('reservation_date', $date)
                       ->where('reservation_time', $time)
-                      ->where('status', '!=', 'cancelled');
+                      ->whereIn('status', ['pending', 'confirmed']);
             })
             ->get();
     }

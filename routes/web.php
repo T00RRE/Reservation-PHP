@@ -1,9 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\RestaurantController;
-use App\Http\Controllers\ReservationController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ReservationController;
+use App\Http\Controllers\RestaurantController;
+use Illuminate\Support\Facades\Route;
 
 // Strona główna
 Route::get('/', function () {
@@ -15,16 +16,29 @@ Route::get('/restaurants', [RestaurantController::class, 'index'])->name('restau
 Route::get('/restaurants/{restaurant}', [RestaurantController::class, 'show'])->name('restaurants.show');
 Route::get('/restaurants/{restaurant}/menu', [RestaurantController::class, 'menu'])->name('restaurants.menu');
 
-// Tymczasowe trasy auth (zamiast Auth::routes())
-Route::get('/login', function() { return 'Login page - do zrobienia'; })->name('login');
-Route::get('/register', function() { return 'Register page - do zrobienia'; })->name('register');
+// Dashboard główny - przekierowuje na odpowiedni panel
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
-// Dashboard i rezerwacje bez middleware (pełny dostęp do paneli)
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-Route::get('/dashboard/staff', [DashboardController::class, 'staff'])->name('dashboard.staff');
-Route::get('/dashboard/customer', [DashboardController::class, 'customer'])->name('dashboard.customer');
-Route::resource('reservations', ReservationController::class);
-Route::get('/api/available-tables', [ReservationController::class, 'getAvailableTables'])->name('api.available-tables');
+// Trasy wymagające logowania
+Route::middleware(['auth', 'verified'])->group(function () {
+    // Profile management
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    
+    // Dashboardy specyficzne dla ról
+    Route::get('/admin/dashboard', [DashboardController::class, 'admin'])->name('admin.dashboard');
+    Route::get('/manager/dashboard', [DashboardController::class, 'manager'])->name('manager.dashboard');
+    Route::get('/customer/dashboard', [DashboardController::class, 'customer'])->name('customer.dashboard');
+    
+    // Rezerwacje (tylko dla zalogowanych)
+    Route::resource('reservations', ReservationController::class);
+    Route::patch('reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->name('reservations.confirm');
+    Route::get('/api/available-tables', [ReservationController::class, 'getAvailableTables'])->name('api.available-tables');
+});
+
+// Laravel Breeze authentication routes
+require __DIR__.'/auth.php';
 
 // Fallback route
 Route::fallback(function () {

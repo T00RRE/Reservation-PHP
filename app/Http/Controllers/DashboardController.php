@@ -17,13 +17,16 @@ class DashboardController extends Controller
      */
     public function admin()
     {
-        // $this->authorize('admin-dashboard');
-
+        // Sprawdź czy użytkownik jest zalogowany
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+        
         $stats = [
             'total_restaurants' => Restaurant::count(),
             'total_users' => User::count(),
             'total_reservations' => Reservation::count(),
-            'pending_reviews' => Review::pending()->count(),
+            'pending_reviews' => 0, // Tymczasowo 0, bo nie mamy jeszcze Review CRUD
             'todays_reservations' => Reservation::whereDate('reservation_date', today())->count(),
             'active_restaurants' => Restaurant::active()->count(),
         ];
@@ -33,11 +36,7 @@ class DashboardController extends Controller
             ->take(10)
             ->get();
 
-        $pendingReviews = Review::pending()
-            ->with(['user', 'restaurant', 'dish'])
-            ->latest()
-            ->take(10)
-            ->get();
+        $pendingReviews = collect(); // Pusta kolekcja na razie
 
         return view('dashboard.admin', compact('stats', 'recentReservations', 'pendingReviews'));
     }
@@ -46,42 +45,38 @@ class DashboardController extends Controller
      * Dashboard dla menedżera restauracji
      */
     public function manager()
-    {
-        $user = Auth::user();
-        if (!$user) {
-            $user = (object)['role' => 'manager', 'id' => 1, 'name' => 'Test Manager', 'restaurant' => null];
-        }
-        $restaurant = $user->restaurant;
-
-        if (!$restaurant) {
-            return redirect()->route('dashboard.customer')
-                ->with('error', 'Nie jesteś przypisany do żadnej restauracji.');
-        }
-
-        $stats = [
-            'total_tables' => $restaurant->tables()->count(),
-            'todays_reservations' => Reservation::where('restaurant_id', $restaurant->id)->whereDate('reservation_date', today())->count(),
-            'upcoming_reservations' => Reservation::where('restaurant_id', $restaurant->id)->where('reservation_date', '>=', today())->count(),
-            'total_reviews' => Review::where('restaurant_id', $restaurant->id)->where('is_approved', true)->count(),
-            'average_rating' => $restaurant->rating,
-            'pending_reservations' => Reservation::where('restaurant_id', $restaurant->id)->where('status', 'pending')->count(),
-        ];
-
-        $todaysReservations = Reservation::where('restaurant_id', $restaurant->id)
-            ->whereDate('reservation_date', today())
-            ->with(['user', 'table'])
-            ->orderBy('reservation_time')
-            ->get();
-
-        $recentReviews = Review::where('restaurant_id', $restaurant->id)
-            ->where('is_approved', true)
-            ->with('user')
-            ->latest()
-            ->take(5)
-            ->get();
-
-        return view('dashboard.manager', compact('restaurant', 'stats', 'todaysReservations', 'recentReviews'));
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+    
+    $user = Auth::user();
+    $restaurant = $user->restaurant;
+
+    if (!$restaurant) {
+        return redirect()->route('customer.dashboard')
+            ->with('error', 'Nie jesteś przypisany do żadnej restauracji.');
+    }
+
+    $stats = [
+        'total_tables' => $restaurant->tables()->count(),
+        'todays_reservations' => Reservation::where('restaurant_id', $restaurant->id)->whereDate('reservation_date', today())->count(),
+        'upcoming_reservations' => Reservation::where('restaurant_id', $restaurant->id)->where('reservation_date', '>=', today())->count(),
+        'total_reviews' => 0, // Tymczasowo 0
+        'average_rating' => $restaurant->rating,
+        'pending_reservations' => Reservation::where('restaurant_id', $restaurant->id)->where('status', 'pending')->count(),
+    ];
+
+    $todaysReservations = Reservation::where('restaurant_id', $restaurant->id)
+        ->whereDate('reservation_date', today())
+        ->with(['user', 'table'])
+        ->orderBy('reservation_time')
+        ->get();
+
+    $recentReviews = collect(); // Pusta kolekcja
+
+    return view('dashboard.manager', compact('restaurant', 'stats', 'todaysReservations', 'recentReviews'));
+}
 
     /**
      * Dashboard dla personelu restauracji
@@ -159,17 +154,14 @@ class DashboardController extends Controller
      * Główna strona dashboard - przekierowuje na odpowiedni dashboard
      */
     public function index()
-    {
-        $user = Auth::user();
-        if (!$user) {
-            $user = (object)['role' => 'admin', 'id' => 1, 'name' => 'Test Admin', 'restaurant' => null];
-        }
-        return match($user->role) {
-            'admin' => $this->admin(),
-            'manager' => $this->manager(),
-            'staff' => $this->staff(),
-            'customer' => $this->customer(),
-            default => redirect()->route('restaurants.index'),
-        };
-    }
+{
+    $user = Auth::user();
+    
+    return match($user->role) {
+        'admin' => redirect()->route('admin.dashboard'),
+        'manager', 'staff' => redirect()->route('manager.dashboard'),
+        'customer' => redirect()->route('customer.dashboard'),
+        default => redirect()->route('restaurants.index'),
+    };
+}
 }

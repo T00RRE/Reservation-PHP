@@ -27,7 +27,6 @@ class Reservation extends Model
 
     protected $casts = [
         'reservation_date' => 'date',
-        'reservation_time' => 'datetime:H:i',
         'guests_count' => 'integer',
         'confirmed_at' => 'datetime',
         'cancelled_at' => 'datetime',
@@ -121,9 +120,11 @@ class Reservation extends Model
             return false;
         }
 
-        // Można anulować do 2 godzin przed rezerwacją
-        $reservationDateTime = Carbon::parse($this->reservation_date . ' ' . $this->reservation_time);
-        return $reservationDateTime->diffInHours(now()) >= 2;
+        // Uproszczona wersja - można anulować jeśli nie jest w przeszłości
+        $today = Carbon::today();
+        $reservationDate = Carbon::parse($this->reservation_date);
+        
+        return $reservationDate->gte($today);
     }
 
     /**
@@ -131,11 +132,8 @@ class Reservation extends Model
      */
     public function needsReminder()
     {
-        $reservationDateTime = Carbon::parse($this->reservation_date . ' ' . $this->reservation_time);
-        $hoursUntilReservation = now()->diffInHours($reservationDateTime, false);
-        
-        return $hoursUntilReservation <= 24 && $hoursUntilReservation > 0 && 
-               $this->status === self::STATUS_CONFIRMED;
+        // Uproszczona wersja
+        return $this->status === self::STATUS_CONFIRMED;
     }
 
     /**
