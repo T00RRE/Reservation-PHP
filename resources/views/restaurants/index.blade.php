@@ -183,7 +183,7 @@
             @if($restaurants->count() > 0)
                 <div class="restaurants-grid" id="restaurants-container">
                     @foreach($restaurants as $restaurant)
-                        <div class="restaurant-card">
+                        <div class="restaurant-card {{ !$restaurant->is_active ? 'inactive' : '' }}">
                             <div class="card-image">
                                 <div class="image-placeholder">
                                     <i class="fas fa-concierge-bell"></i>
@@ -243,15 +243,47 @@
                                 </div>
                                 
                                 <div class="card-actions">
-                                    <a href="{{ route('restaurants.show', $restaurant) }}" class="btn-secondary">
-                                        <i class="fas fa-info-circle"></i>
-                                        Szczegóły
-                                    </a>
-                                    <a href="{{ route('reservations.create', ['restaurant_id' => $restaurant->id]) }}" class="btn-primary">
-                                        <i class="fas fa-calendar-plus"></i>
-                                        Zarezerwuj
-                                    </a>
-                                </div>
+    <!-- Przyciski dla wszystkich -->
+    <a href="{{ route('restaurants.show', $restaurant) }}" class="btn-secondary">
+        <i class="fas fa-info-circle"></i>
+        Szczegóły
+    </a>
+    <a href="{{ route('reservations.create', ['restaurant_id' => $restaurant->id]) }}" class="btn-primary">
+        <i class="fas fa-calendar-plus"></i>
+        Zarezerwuj
+    </a>
+    
+    <!-- Przyciski administracyjne (tylko dla admin/manager) -->
+    @if(auth()->check() && (auth()->user()->role === 'admin' || (auth()->user()->role === 'manager' && auth()->user()->restaurant_id === $restaurant->id)))
+        <div class="admin-actions">
+            <a href="{{ route('restaurants.edit', $restaurant) }}" class="btn-admin edit">
+                <i class="fas fa-edit"></i>
+                Edytuj
+            </a>
+            @if(auth()->user()->role === 'admin')
+                @if($restaurant->is_active)
+                    <form method="POST" action="{{ route('restaurants.destroy', $restaurant) }}" class="inline-form">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn-admin delete" onclick="return confirm('Czy na pewno chcesz dezaktywować tę restaurację?')">
+                            <i class="fas fa-times-circle"></i>
+                            Dezaktywuj
+                        </button>
+                    </form>
+                @else
+                    <form method="POST" action="{{ route('restaurants.activate', $restaurant) }}" class="inline-form">
+                        @csrf
+                        @method('PATCH')
+                        <button type="submit" class="btn-admin activate">
+                            <i class="fas fa-check-circle"></i>
+                            Aktywuj
+                        </button>
+                    </form>
+                @endif
+            @endif
+        </div>
+    @endif
+</div>
                             </div>
                         </div>
                     @endforeach
@@ -1159,6 +1191,89 @@
         width: 100%;
         justify-content: center;
     }
+}
+.admin-actions {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.btn-admin {
+    padding: 8px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.85rem;
+    text-align: center;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-admin.edit {
+    background: #f59e0b;
+    color: white;
+}
+
+.btn-admin.edit:hover {
+    background: #d97706;
+    color: white;
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+
+.btn-admin.delete {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-admin.delete:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+}
+
+.btn-admin.activate {
+    background: #10b981;
+    color: white;
+}
+
+.btn-admin.activate:hover {
+    background: #059669;
+    transform: translateY(-1px);
+}
+
+.inline-form {
+    display: inline;
+    width: 100%;
+}
+
+/* Admin Badge dla nieaktywnych restauracji */
+.restaurant-card.inactive {
+    opacity: 0.7;
+    border: 2px dashed #ef4444;
+}
+
+.restaurant-card.inactive::before {
+    content: "NIEAKTYWNA";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    z-index: 20;
 }
 </style>
 @endsection

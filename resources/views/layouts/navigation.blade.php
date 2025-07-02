@@ -9,7 +9,22 @@
                         <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
                     </a>
                 </div>
-
+                <!-- Zarządzanie stolikami (dla staff/manager/admin) -->
+                @if(auth()->user() && in_array(auth()->user()->role, ['admin', 'manager', 'staff']))
+                    <x-nav-link :href="route('tables.index')" :active="request()->routeIs('tables.*')">
+                        {{ __('Stoliki') }}
+                    </x-nav-link>
+                    @endif
+                    @if(auth()->check() && auth()->user()->role === 'admin')
+                    <x-nav-link :href="route('restaurants.create')" :active="request()->routeIs('restaurants.create')">
+                        {{ __('Dodaj restaurację') }}
+                    </x-nav-link>
+                @endif
+                @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'manager', 'staff']))
+                <x-nav-link :href="route('menus.index')" :active="request()->routeIs('menus.*')">
+                    {{ __('Menu') }}
+                </x-nav-link>
+                @endif
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
@@ -32,7 +47,7 @@
                             </div>
                         </button>
                     </x-slot>
-
+                    
                     <x-slot name="content">
                         <x-dropdown-link :href="route('profile.edit')">
                             {{ __('Profile') }}
