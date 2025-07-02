@@ -115,17 +115,16 @@ class Reservation extends Model
      * Sprawdź czy rezerwacja może być anulowana
      */
     public function canBeCancelled()
-    {
-        if ($this->status === self::STATUS_CANCELLED) {
-            return false;
-        }
-
-        // Uproszczona wersja - można anulować jeśli nie jest w przeszłości
-        $today = Carbon::today();
-        $reservationDate = Carbon::parse($this->reservation_date);
-        
-        return $reservationDate->gte($today);
+{
+    if ($this->status === 'cancelled') {
+        return false;
     }
+
+    $today = Carbon::today();
+    $reservationDate = Carbon::parse($this->reservation_date);
+    
+    return $reservationDate->gte($today);
+}
 
     /**
      * Sprawdź czy rezerwacja wymaga przypomnienia

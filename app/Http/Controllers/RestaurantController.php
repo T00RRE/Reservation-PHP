@@ -12,14 +12,32 @@ class RestaurantController extends Controller
     /**
      * Display a listing of restaurants.
      */
-    public function index()
-    {
-        $restaurants = Restaurant::where('is_active', true)
-    ->orderBy('rating', 'desc')
-    ->paginate(10);
+    public function index(Request $request)
+{
+    $restaurants = Restaurant::query()
+        ->when($request->search, function($query, $search) {
+            $query->where('name', 'like', "%{$search}%")
+                  ->orWhere('address', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+        })
+        ->when($request->rating, function($query, $rating) {
+            $query->where('rating', '>=', $rating);
+        })
+        ->when($request->cuisine, function($query, $cuisine) {
+            $query->where('description', 'like', "%{$cuisine}%");
+        })
+        ->where('is_active', true)
+        ->orderBy('rating', 'desc')
+        ->paginate(12);
 
-        return view('restaurants.index', compact('restaurants'));
-    }
+    $topRestaurants = Restaurant::where('is_active', true)
+        ->where('rating', '>=', 4.5)
+        ->orderBy('rating', 'desc')
+        ->take(3)
+        ->get();
+
+    return view('restaurants.index', compact('restaurants', 'topRestaurants'));
+}
 
     /**
      * Show the form for creating a new restaurant.
